@@ -77,8 +77,8 @@ newPhotoBtn.addEventListener('click', () => {
 // quando a área visível não é um quadrilátero perfeito na foto (ex: um canto
 // de parede no meio, um móvel cortando a área, etc). Agora o visitante marca
 // quantos pontos forem necessários para contornar a forma exata; o cálculo de
-// perspectiva (homografia) é feito separadamente, a partir do retângulo de
-// melhor ajuste (minAreaRect) desses pontos — ver runHomography().
+// perspectiva (homografia) é feito separadamente, a partir do quadrilátero
+// real (os 4 cantos extremos do contorno) desses pontos — ver getBestFitQuad().
 const resetPointsBtn = document.getElementById('reset-points-btn');
 const finishPointsBtn = document.getElementById('finish-points-btn');
 const instructions = document.getElementById('instructions');
@@ -210,41 +210,75 @@ function applyTexture(textureSrc) {
 }
 
 function getBestFitQuad(pts) {
-  // Estima um retângulo (possivelmente rotacionado) que melhor se ajusta
-  // ao contorno marcado, para servir de referência de perspectiva —
-  // independente de quantos pontos o visitante marcou ou da ordem exata deles.
+  // Extrai o quadrilátero REAL do contorno marcado, não um retângulo ajustado.
+  //
+  // Versão anterior usava cv.minAreaRect, que só consegue devolver um
+  // retângulo rotacionado — ou seja, sempre 4 cantos de 90°, só que girados.
+  // Isso é geometricamente incapaz de representar um trapézio (cantos com
+  // ângulos diferentes entre si), que é exatamente a forma que uma superfície
+  // retangular real assume numa foto por causa da perspectiva da câmera (a
+  // aresta mais distante fica mais estreita, as linhas convergem). Por isso a
+  // textura sempre ficava "reta" — não importa o quanto o retângulo gire, ele
+  // nunca deixa de ser um retângulo.
+  //
+  // Correção: em vez de ajustar uma forma aos pontos, pegamos os 4 cantos
+  // extremos reais do contorno marcado. Isso forma um quadrilátero livre (pode
+  // ser um trapézio de qualquer formato), que é o que a homografia precisa
+  // para respeitar a perspectiva real da foto.
+  //
+  // 1) Convex hull dos pontos marcados: se o visitante contornou uma
+  //    reentrância (ex: desviando de um móvel), o hull ignora essas
+  //    concavidades e mantém só o contorno externo — de onde vêm os 4 cantos
+  //    reais da área.
+  // 2) Dentre os pontos do hull, pega os 4 mais extremos combinando x+y e
+  //    x-y (método clássico de ordenação de cantos): o de cima-esquerda tem a
+  //    menor soma (x+y), o de baixo-direita tem a maior soma; o de
+  //    cima-direita tem a menor diferença (y-x), o de baixo-esquerda tem a
+  //    maior diferença. Funciona com qualquer N de pontos porque os 4 cantos
+  //    reais da área são sempre os pontos mais extremos do hull.
   const flatPoints = [];
   pts.forEach((p) => flatPoints.push(Math.round(p.x), Math.round(p.y)));
 
   const pointsMat = cv.matFromArray(pts.length, 1, cv.CV_32SC2, flatPoints);
-  const rect = cv.minAreaRect(pointsMat);
+  const hullIdx = new cv.Mat();
+  cv.convexHull(pointsMat, hullIdx, false, false); // returnPoints=false -> índices
   pointsMat.delete();
 
-  const angleRad = (rect.angle * Math.PI) / 180;
-  const cos = Math.cos(angleRad);
-  const sin = Math.sin(angleRad);
-  const halfW = rect.size.width / 2;
-  const halfH = rect.size.height / 2;
-  const cx = rect.center.x;
-  const cy = rect.center.y;
+  const hullPoints = [];
+  for (let i = 0; i < hullIdx.rows; i++) {
+    hullPoints.push(pts[hullIdx.data32S[i]]);
+  }
+  hullIdx.delete();
 
-  // Cantos relativos ao centro, antes da rotação: TL, TR, BR, BL
-  const relativeCorners = [
-    [-halfW, -halfH],
-    [halfW, -halfH],
-    [halfW, halfH],
-    [-halfW, halfH],
-  ];
+  let tl = hullPoints[0];
+  let tr = hullPoints[0];
+  let br = hullPoints[0];
+  let bl = hullPoints[0];
+  let minSum = Infinity;
+  let maxSum = -Infinity;
+  let minDiff = Infinity;
+  let maxDiff = -Infinity;
 
-  const corners = relativeCorners.map(([x, y]) => ({
-    x: cx + x * cos - y * sin,
-    y: cy + x * sin + y * cos,
-  }));
+  hullPoints.forEach((p) => {
+    const sum = p.x + p.y;
+    const diff = p.y - p.x;
+    if (sum < minSum) { minSum = sum; tl = p; }
+    if (sum > maxSum) { maxSum = sum; br = p; }
+    if (diff < minDiff) { minDiff = diff; tr = p; }
+    if (diff > maxDiff) { maxDiff = diff; bl = p; }
+  });
 
-  // Expõe também as dimensões do retângulo (em pixels do canvas), não só os
-  // cantos — necessário para calcular quantas vezes a textura precisa se
-  // repetir (ver buildTiledTextureCanvas) em vez de esticar uma imagem só.
-  return { corners, width: rect.size.width, height: rect.size.height };
+  const corners = [tl, tr, br, bl];
+
+  // "width"/"height" deixam de ser lados de um retângulo perfeito (o
+  // quadrilátero agora pode ser um trapézio) — viram uma média entre os lados
+  // opostos, usada só como referência de escala para o ladrilhamento da
+  // textura (ver buildTiledTextureCanvas), não como medida geométrica exata.
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const width = (dist(tl, tr) + dist(bl, br)) / 2;
+  const height = (dist(tl, bl) + dist(tr, br)) / 2;
+
+  return { corners, width, height };
 }
 
 function buildTiledTextureCanvas(texImg, repeatX, repeatY) {
