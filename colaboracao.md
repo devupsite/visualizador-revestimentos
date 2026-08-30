@@ -66,6 +66,15 @@ colaboracao.md       → este arquivo
 
 > Toda sessão adiciona uma entrada nova no topo desta lista. Nunca apague entradas antigas.
 
+### 30/08/2026 (continuação) — Corrige desproporção da textura (tiling) e reduz intensidade do blend, a partir de teste visual real
+- Contexto: a sessão anterior (mesmo dia, entrada abaixo) deixou duas mudanças "validadas só estaticamente" e pediu teste visual real antes de considerar prontas. O usuário testou e reportou dois problemas — este é o resultado da correção deles.
+- Arquivos alterados: `frontend/app.js`
+- Commits desta sessão:
+  - `12842cc` — fix: ladrilha a textura em vez de esticar uma unidade sobre a área toda. Era o bug mais grave: a imagem do catálogo (retrato de UM módulo do revestimento) estava sendo esticada via homografia pra cobrir a área marcada inteira, gerando um padrão gigante e desproporcional, sem repetição nenhuma — exatamente o "sem dimensionamento" reportado. `getBestFitQuad` agora também retorna as dimensões do retângulo (`rect.size`), usadas pra calcular `repeatX`/`repeatY` e montar um mosaico da textura (`buildTiledTextureCanvas`) na escala nativa da imagem do catálogo, ANTES da homografia.
+  - `24ed077` — fix: reduz intensidade do blend de luz/sombra de 100% pra 45% de opacidade. O usuário reportou um retângulo "fantasma"/lavado sobre a textura aplicada; era o soft-light do commit anterior (`1b76aaa`) vazando luminância alta de quadros na parede original, quase apagando a textura ali. Risco que já tinha sido sinalizado na entrada de log anterior, agora confirmado em teste real.
+- Status: **as duas correções acima são só validadas estaticamente de novo** (sintaxe + leitura da lógica) — precisam do mesmo teste visual real antes de dar como resolvido. Em especial: (1) confirmar que o ladrilhamento resolve a desproporção sem introduzir um padrão repetitivo óbvio/artificial demais (pode precisar de variação entre tiles no futuro, ex: leve rotação/espelhamento alternado, se ficar repetitivo demais visualmente); (2) confirmar se 45% de opacidade no blend é o valor certo, ou se precisa subir/descer — foi um valor arbitrário, não calculado a partir de nada.
+- Notas para a próxima sessão: se o teste visual mostrar que o ladrilhamento ainda está com escala errada (módulos grandes/pequenos demais), o cálculo de `repeatX`/`repeatY` em `runHomography` (usa `quadWidth / texImg.width`) é o lugar certo pra ajustar — hoje assume que a resolução nativa da imagem do catálogo já é uma escala razoável, o que é só uma aproximação sem medida real da parede.
+
 ### 30/08/2026 — Corrige recorte por polígono livre + blend de luz/sombra (e recupera log de 4 commits não registrados)
 - **Catch-up de log:** entre a entrada anterior (29/08) e esta sessão, uma outra sessão fez 4 commits que não ficaram registrados aqui: `ea56819` (upload de foto), `0445a76` (marcação dos 4 cantos), `c07c8c2` (aplica textura via homografia, sem blend), `00c1ce7` (marcação vira polígono livre de N pontos). Ver mensagens de commit no histórico do git para detalhe de cada um.
 - Arquivos alterados nesta sessão: `frontend/app.js`
