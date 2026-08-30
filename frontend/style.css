@@ -1,0 +1,102 @@
+:root {
+  --bg: #0F0F0F;
+  --accent: #57999B;
+  --text: #ffffff;
+  --text-muted: #cccccc;
+  --panel-bg: #1a1a1a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.topbar {
+  text-align: center;
+  padding: 2rem 1rem 1rem;
+}
+
+.topbar h1 {
+  color: var(--accent);
+  margin-bottom: 0.25rem;
+}
+
+.topbar p {
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.panel {
+  margin-top: 1.5rem;
+}
+
+.hidden {
+  display: none;
+}
+
+.upload-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  border: 2px dashed var(--accent);
+  border-radius: 12px;
+  cursor: pointer;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 1rem;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.upload-box:hover,
+.upload-box.dragover {
+  background: rgba(87, 153, 155, 0.08);
+  border-color: #7fbdbf;
+}
+
+.instructions {
+  color: var(--text-muted);
+  margin-bottom: 0.75rem;
+}
+
+#photo-canvas {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid #333;
+  display: block;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.actions button {
+  background: transparent;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.actions button:hover {
+  background: rgba(87, 153, 155, 0.12);
+}
