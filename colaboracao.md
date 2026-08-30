@@ -22,6 +22,7 @@ Este arquivo existe para que múltiplas sessões (incluindo diferentes instânci
 ## Enquanto trabalha
 
 5. Faça commits pequenos e atômicos, com mensagens descritivas (ex: `feat: adiciona marcação de 4 pontos no canvas`, não `updates`).
+5.1. **Não acumule o trabalho da sessão inteira para um único commit no final.** Faça push a cada parte funcional concluída (ex: primeiro o upload da foto, depois a marcação dos pontos, depois a homografia — cada um em um commit separado, assim que funcionar). Isso permite que outra sessão veja o progresso e continue o trabalho mesmo que a sessão atual seja interrompida ou termine antes do previsto — o build nunca deve ficar "preso" esperando uma sessão específica terminar tudo de uma vez.
 6. Nunca faça `force push` nem reescreva histórico (`rebase -f`, `push --force`). Histórico é sagrado — outra sessão pode depender dele para entender o que mudou.
 7. Não delete ou reescreva arquivos inteiros de funcionalidades que não são o foco da sua tarefa atual, mesmo que pareçam "melhoráveis". Se identificar algo que vale mudar fora do escopo, anote na seção de notas abaixo em vez de mexer.
 8. Mantenha arquivos de frontend (site/app) separados de arquivos de treino de IA:
@@ -38,11 +39,14 @@ Este arquivo existe para que múltiplas sessões (incluindo diferentes instânci
 
 ---
 
-## Deploy para a Hostinger
+## Deploy
 
-- O deploy para produção (Hostinger) **só acontece a partir da branch `main`**, nunca de uma branch experimental.
-- Antes de disparar o deploy, confirme que a build local funciona (teste manual do fluxo: upload de foto → marcação dos 4 pontos → aplicação da textura → resultado final).
-- Documente aqui, na primeira vez que o pipeline de deploy for configurado, exatamente como ele funciona (GitHub Actions? FTP manual? webhook?), para que sessões futuras não precisem redescobrir isso.
+- **Método atual: GitHub Pages**, via `.github/workflows/deploy.yml`. Todo push na branch `main` publica automaticamente o conteúdo de `/frontend/` em `https://devupsite.github.io/visualizador-revestimentos/`.
+- Em Settings → Pages, o Source precisa estar configurado como **"GitHub Actions"** (não "Deploy from a branch") — confirme isso se o deploy parecer não estar atualizando.
+- O deploy **só acontece a partir da branch `main`**, nunca de uma branch experimental.
+- Antes de fazer push para `main`, confirme que a parte que você construiu funciona sozinha (mesmo que o fluxo completo ainda não esteja pronto).
+- Já existe um workflow alternativo via FTP para a Hostinger (usado antes de migrarmos para o Pages) no histórico do repositório, caso um dia seja necessário voltar a hospedar lá.
+- Para fazer push usando o token temporário do usuário, siga o processo descrito em `push-com-token.md`.
 
 ---
 
@@ -61,6 +65,11 @@ colaboracao.md       → este arquivo
 ## Log de sessões
 
 > Toda sessão adiciona uma entrada nova no topo desta lista. Nunca apague entradas antigas.
+
+### 29/08/2026 — Estrutura inicial do repositório e pipeline de deploy
+- Arquivos alterados: `colaboracao.md`, `README.md`, `frontend/index.html` (placeholder), `.github/workflows/deploy.yml`, `push-com-token.md`
+- Status: concluído (base do repositório e deploy funcionando)
+- Notas para a próxima sessão: deploy está publicando via GitHub Pages em `https://devupsite.github.io/visualizador-revestimentos/`. O MVP funcional (upload de foto + marcação de 4 pontos + homografia + blend de luz, tudo client-side, sem IA paga) ainda não foi iniciado — é o próximo passo. Ver a conversa que originou este projeto para o racional técnico completo (segmentação manual por 4 pontos no lugar de SAM2, OpenCV.js para homografia, Canvas/WebGL para blend, LoRA via Colab + Hugging Face Spaces para a camada generativa futura).
 
 ### [Adicionar aqui: data] — [Adicionar aqui: resumo da sessão]
 - Arquivos alterados:
