@@ -41,3 +41,7 @@ Este projeto não usa uma chave SSH fixa nem um token permanente salvo em lugar 
 - **Nunca escreva o valor do token em nenhum arquivo do repositório**, em comentário de código, em mensagem de commit, ou em qualquer lugar que fique salvo permanentemente. Ele deve existir só na configuração temporária do remoto git durante a sessão ativa.
 - Se o push for rejeitado por falta de escopo (`workflow`, por exemplo), não tente contornar isso removendo o `.github/workflows/` do commit sem avisar — explique o problema ao usuário e peça um token com o escopo certo.
 - Depois do push, confirme visualmente (ex: acessando a URL do repositório ou do GitHub Actions) que o commit e o deploy aconteceram como esperado, antes de encerrar a tarefa.
+
+## Permissão para reutilizar o token sem perguntar a cada push
+
+Por padrão, cada push deveria ser precedido de pedir o token ao usuário. **Porém, se o usuário disser explicitamente que a sessão pode reutilizar o token já fornecido durante o resto daquele dia/sessão de trabalho sem pedir de novo a cada commit**, isso vale — não precisa confirmar antes de cada push individual enquanto essa permissão estiver em vigor. Isso não é uma regra permanente do projeto: vale apenas para a sessão em que foi concedida, com o token daquele dia. Uma nova sessão (ou o mesmo token expirado/revogado) volta ao processo normal de pedir o token antes de commitar.
