@@ -288,13 +288,27 @@ function runHomography(texImg) {
 
   const { corners: quad, width: quadWidth, height: quadHeight } = getBestFitQuad(points);
 
-  // Repete a textura o suficiente para que cada módulo dela mantenha,
-  // aproximadamente, a mesma escala em pixels que tem na imagem original do
-  // catálogo — em vez de esticar 1 módulo pra cobrir a área toda. Sem uma
-  // medida real da parede não dá pra cravar a escala fisicamente correta,
-  // mas isso evita o efeito de "textura gigante e achatada".
-  const repeatX = Math.max(1, Math.round(quadWidth / texImg.width));
-  const repeatY = Math.max(1, Math.round(quadHeight / texImg.height));
+  // Repete a textura o suficiente para simular um padrão real de revestimento,
+  // em vez de esticar 1 módulo pra cobrir a área toda.
+  //
+  // IMPORTANTE: a escala NÃO pode vir da resolução em pixels da foto do
+  // catálogo (texImg.width/height) — isso foi tentado numa versão anterior e
+  // não funcionou. A foto do catálogo tem ~800px de largura, e o canvas onde
+  // a foto do visitante é desenhada tem no máximo 900px (ver `maxWidth` em
+  // drawImageToCanvas) — como os dois números são da mesma ordem de
+  // grandeza, `quadWidth / texImg.width` quase sempre arredondava pra 1,
+  // ou seja: nenhum ladrilhamento de verdade acontecia. A resolução de uma
+  // foto de catálogo não tem NENHUMA relação com o tamanho físico real do
+  // que ela retrata (pode ter sido fotografada de perto ou de longe).
+  //
+  // Em vez disso, usamos um tamanho de módulo ALVO em pixels do canvas —
+  // arbitrário, calibrado visualmente pra parecer um padrão de revestimento
+  // razoável numa foto de ambiente doméstico (não fisicamente exato, porque
+  // não temos nenhuma medida real da parede/superfície marcada).
+  const TARGET_TILE_WIDTH_PX = 110;
+  const targetTileHeightPx = TARGET_TILE_WIDTH_PX * (texImg.height / texImg.width);
+  const repeatX = Math.max(1, Math.round(quadWidth / TARGET_TILE_WIDTH_PX));
+  const repeatY = Math.max(1, Math.round(quadHeight / targetTileHeightPx));
   const tiledTexCanvas = buildTiledTextureCanvas(texImg, repeatX, repeatY);
 
   const srcCorners = [
