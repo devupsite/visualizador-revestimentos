@@ -66,6 +66,13 @@ colaboracao.md       → este arquivo
 
 > Toda sessão adiciona uma entrada nova no topo desta lista. Nunca apague entradas antigas.
 
+### 30/08/2026 (continuação 2) — Corrige o cálculo de tiling, que era um no-op na prática
+- Contexto: usuário testou o deploy da sessão anterior (commits `12842cc`/`24ed077`) e reportou "ficou exatamente igual" — nenhuma mudança visível, nem no tamanho da textura nem (aparentemente, ofuscado pelo problema maior) no blend.
+- Diagnóstico: `12842cc` calculava `repeatX = round(quadWidth / texImg.width)`. A foto do catálogo (`brick-mescla-prime.jpg`) tem 800×753px — verificado diretamente baixando o arquivo. O canvas onde a foto do visitante é desenhada tem no máximo 900px de largura (`maxWidth` em `drawImageToCanvas`). Como os dois números são da mesma ordem de grandeza, o `round()` quase sempre dava 1 — ou seja, o ladrilhamento "novo" continuava sendo, na prática, o comportamento antigo (1 imagem esticada). A resolução em pixels de uma foto de catálogo não tem nenhuma relação com o tamanho físico real do que ela retrata, então usar ela como referência de escala não fazia sentido — foi um erro de raciocínio da sessão anterior, não percebido antes porque não havia como testar visualmente por aqui.
+- Commit desta sessão: `b8ae2bb` — fix: corrige cálculo de repeat do tiling. Substitui a referência de escala por um tamanho de módulo ALVO em pixels do canvas (`TARGET_TILE_WIDTH_PX = 110`, constante arbitrária no topo de `runHomography`), mantendo a proporção original da textura via `texImg.height / texImg.width`.
+- Status: **de novo, só validado estaticamente** — precisa do mesmo teste visual real. Dessa vez o efeito deve ser visivelmente diferente (não vai mais ser "exatamente igual"), mas o valor `110` é um chute calibrado só pela lógica, sem ver o resultado.
+- Notas para a próxima sessão: se `110` deixar o padrão repetitivo demais (módulos pequenos e óbvios) ou ainda grande demais, é só ajustar essa constante — está isolada e comentada no topo de `runHomography`, fácil de encontrar. Se depois de ajustar isso o blend de luz/sombra (45% de opacidade, `24ed077`) ainda não tiver sido avaliado de verdade (ficou ofuscado pelo problema do tiling neste teste), vale reavaliar ele também.
+
 ### 30/08/2026 (continuação) — Corrige desproporção da textura (tiling) e reduz intensidade do blend, a partir de teste visual real
 - Contexto: a sessão anterior (mesmo dia, entrada abaixo) deixou duas mudanças "validadas só estaticamente" e pediu teste visual real antes de considerar prontas. O usuário testou e reportou dois problemas — este é o resultado da correção deles.
 - Arquivos alterados: `frontend/app.js`
