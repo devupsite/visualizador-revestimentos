@@ -242,6 +242,19 @@ function getBestFitQuad(pts) {
   }));
 }
 
+function buildLuminanceCanvas(image, width, height) {
+  // Extrai só a luminância (preto e branco) da foto original, no mesmo
+  // enquadramento do canvas principal. Isso vira a "camada de luz" que dá
+  // forma às sombras/reflexos reais do ambiente por cima da textura nova.
+  const grayCanvas = document.createElement('canvas');
+  grayCanvas.width = width;
+  grayCanvas.height = height;
+  const grayCtx = grayCanvas.getContext('2d');
+  grayCtx.filter = 'grayscale(1)';
+  grayCtx.drawImage(image, 0, 0, width, height);
+  return grayCanvas;
+}
+
 function runHomography(texImg) {
   // Redesenha a foto original antes de aplicar, para não empilhar aplicações antigas
   drawImageToCanvas(currentImage);
@@ -289,8 +302,25 @@ function runHomography(texImg) {
   warpedCanvas.height = canvas.height;
   cv.imshow(warpedCanvas, dstMat);
 
-  // Recorta o resultado warpado pelo polígono EXATO marcado (não pelo
-  // bounding rect da textura). Isso precisa acontecer num canvas próprio,
+  // Blend de luz/sombra: aplica a luminância da foto original por cima da
+  // textura warpada, via soft-light, para herdar sombras/reflexos reais do
+  // ambiente (em vez da textura ficar "colada" com iluminação plana).
+  // Isso acontece ANTES do recorte pelo polígono — como o blend pode extrapolar
+  // a área do minAreaRect (mesmo problema de alpha do recorte, ver abaixo),
+  // o destination-in com o polígono real, feito depois, corta qualquer sobra.
+  const shadedCanvas = document.createElement('canvas');
+  shadedCanvas.width = canvas.width;
+  shadedCanvas.height = canvas.height;
+  const shadedCtx = shadedCanvas.getContext('2d');
+  shadedCtx.drawImage(warpedCanvas, 0, 0);
+  shadedCtx.globalCompositeOperation = 'soft-light';
+  shadedCtx.drawImage(buildLuminanceCanvas(currentImage, canvas.width, canvas.height), 0, 0);
+  // globalCompositeOperation persiste no canvas — reseta pro padrão antes de
+  // qualquer outro draw nesse contexto, senão o próximo drawImage também vira blend.
+  shadedCtx.globalCompositeOperation = 'source-over';
+
+  // Recorta o resultado (já com o blend) pelo polígono EXATO marcado, não
+  // pelo bounding rect da textura. Isso precisa acontecer num canvas próprio,
   // transparente por padrão — se fizermos o destination-in direto no canvas
   // principal (que já está opaco com a foto), o recorte não tem efeito
   // nenhum, porque "onde a origem sobrepõe o destino" passa a ser o
@@ -299,7 +329,7 @@ function runHomography(texImg) {
   clippedCanvas.width = canvas.width;
   clippedCanvas.height = canvas.height;
   const clippedCtx = clippedCanvas.getContext('2d');
-  clippedCtx.drawImage(warpedCanvas, 0, 0);
+  clippedCtx.drawImage(shadedCanvas, 0, 0);
   clippedCtx.globalCompositeOperation = 'destination-in';
   clippedCtx.drawImage(maskCanvas, 0, 0);
 
