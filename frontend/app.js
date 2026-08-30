@@ -289,21 +289,24 @@ function runHomography(texImg) {
   warpedCanvas.height = canvas.height;
   cv.imshow(warpedCanvas, dstMat);
 
-  ctx.save();
-  ctx.drawImage(maskCanvas, 0, 0);
-  ctx.globalCompositeOperation = 'source-in';
-  ctx.drawImage(warpedCanvas, 0, 0);
-  ctx.restore();
+  // Recorta o resultado warpado pelo polígono EXATO marcado (não pelo
+  // bounding rect da textura). Isso precisa acontecer num canvas próprio,
+  // transparente por padrão — se fizermos o destination-in direto no canvas
+  // principal (que já está opaco com a foto), o recorte não tem efeito
+  // nenhum, porque "onde a origem sobrepõe o destino" passa a ser o
+  // bounding rect inteiro da textura, não o contorno do polígono.
+  const clippedCanvas = document.createElement('canvas');
+  clippedCanvas.width = canvas.width;
+  clippedCanvas.height = canvas.height;
+  const clippedCtx = clippedCanvas.getContext('2d');
+  clippedCtx.drawImage(warpedCanvas, 0, 0);
+  clippedCtx.globalCompositeOperation = 'destination-in';
+  clippedCtx.drawImage(maskCanvas, 0, 0);
 
-  // Redesenha o resto da foto original por baixo do resultado mascarado
-  const finalCanvas = document.createElement('canvas');
-  finalCanvas.width = canvas.width;
-  finalCanvas.height = canvas.height;
-  const finalCtx = finalCanvas.getContext('2d');
-  finalCtx.drawImage(currentImage, 0, 0, finalCanvas.width, finalCanvas.height);
-  finalCtx.drawImage(canvas, 0, 0);
+  // Agora sim: foto original por baixo, textura já recortada pelo polígono por cima.
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(finalCanvas, 0, 0);
+  ctx.drawImage(currentImage, 0, 0, canvas.width, canvas.height);
+  ctx.drawImage(clippedCanvas, 0, 0);
 
   srcMat.delete();
   dstMat.delete();
