@@ -1,0 +1,31 @@
+name: Deploy para Hostinger
+
+# Dispara sempre que a branch main receber um push
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Sync frontend/ via FTP
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Deploy via FTP para a Hostinger
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          # Pasta local que será enviada (o site em si)
+          local-dir: ./frontend/
+          # Pasta remota na Hostinger onde o visualizador deve morar.
+          # Ajustar conforme a estrutura real do servidor (ex: subpasta ou subdomínio).
+          server-dir: /visualizador/
+          # Não apaga arquivos no servidor que não existem localmente,
+          # evita acidente de apagar algo que outra pessoa subiu manualmente.
+          dangerous-clean-slate: false
