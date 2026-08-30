@@ -72,21 +72,25 @@ newPhotoBtn.addEventListener('click', () => {
   resetPoints();
 });
 
-// --- Marcação dos 4 pontos (cantos da superfície a revestir) ---
+// --- Marcação da área a revestir (polígono livre, N >= 4 pontos) ---
+// Antes travava em exatamente 4 pontos (quadrilátero simples), o que falha
+// quando a área visível não é um quadrilátero perfeito na foto (ex: um canto
+// de parede no meio, um móvel cortando a área, etc). Agora o visitante marca
+// quantos pontos forem necessários para contornar a forma exata; o cálculo de
+// perspectiva (homografia) é feito separadamente, a partir do retângulo de
+// melhor ajuste (minAreaRect) desses pontos — ver runHomography().
 const resetPointsBtn = document.getElementById('reset-points-btn');
+const finishPointsBtn = document.getElementById('finish-points-btn');
 const instructions = document.getElementById('instructions');
 
-const POINT_LABELS = [
-  'superior-esquerdo',
-  'superior-direito',
-  'inferior-direito',
-  'inferior-esquerdo',
-];
+const MIN_POINTS = 4;
 
 let points = []; // [{x, y}, ...] em coordenadas do canvas
+let isFinalized = false;
 
 function resetPoints() {
   points = [];
+  isFinalized = false;
   if (currentImage) {
     drawImageToCanvas(currentImage);
   }
@@ -120,14 +124,14 @@ function drawPoints() {
     ctx.fill();
   });
 
-  // Conecta os pontos já marcados, e fecha o polígono quando os 4 estiverem prontos
+  // Conecta os pontos já marcados, e fecha o polígono quando a marcação for finalizada
   if (points.length > 1) {
     ctx.beginPath();
     ctx.moveTo(points[0].x, points[0].y);
     for (let i = 1; i < points.length; i++) {
       ctx.lineTo(points[i].x, points[i].y);
     }
-    if (points.length === 4) {
+    if (isFinalized) {
       ctx.closePath();
     }
     ctx.stroke();
@@ -135,7 +139,7 @@ function drawPoints() {
 }
 
 function handleCanvasPoint(evt) {
-  if (!currentImage || points.length >= 4) return;
+  if (!currentImage || isFinalized) return;
   evt.preventDefault();
   const coords = getCanvasCoords(evt);
   points.push(coords);
@@ -147,6 +151,15 @@ canvas.addEventListener('click', handleCanvasPoint);
 canvas.addEventListener('touchstart', handleCanvasPoint);
 
 resetPointsBtn.addEventListener('click', resetPoints);
+finishPointsBtn.addEventListener('click', () => {
+  if (points.length < MIN_POINTS) {
+    instructions.textContent = `Marque pelo menos ${MIN_POINTS} pontos antes de concluir (${points.length}/${MIN_POINTS}).`;
+    return;
+  }
+  isFinalized = true;
+  drawPoints();
+  updateInstructions();
+});
 
 // --- Aplicação da textura via homografia (OpenCV.js) ---
 // Etapa atual: mapeia a textura escolhida para o quadrilátero marcado,
@@ -157,8 +170,10 @@ const catalogSection = document.getElementById('catalog-section');
 let selectedTextureSrc = null;
 
 function updateInstructions() {
-  if (points.length < 4) {
-    instructions.textContent = `Marque o canto ${POINT_LABELS[points.length]} da parede ou piso (${points.length}/4).`;
+  if (!isFinalized) {
+    instructions.textContent = points.length === 0
+      ? 'Clique nos cantos da área que você quer revestir, contornando o formato exato. Quando terminar, clique em "Concluir marcação".'
+      : `${points.length} ponto(s) marcado(s). Continue contornando a área ou clique em "Concluir marcação" (mínimo ${MIN_POINTS}).`;
     catalogSection.classList.add('hidden');
   } else {
     instructions.textContent = 'Marcação concluída! Escolha um revestimento do catálogo abaixo.';
@@ -184,7 +199,7 @@ function waitForOpenCV(callback) {
 }
 
 function applyTexture(textureSrc) {
-  if (points.length !== 4 || !currentImage) return;
+  if (!isFinalized || !currentImage) return;
 
   const texImg = new Image();
   texImg.crossOrigin = 'anonymous';
@@ -194,9 +209,44 @@ function applyTexture(textureSrc) {
   texImg.src = textureSrc;
 }
 
+function getBestFitQuad(pts) {
+  // Estima um retângulo (possivelmente rotacionado) que melhor se ajusta
+  // ao contorno marcado, para servir de referência de perspectiva —
+  // independente de quantos pontos o visitante marcou ou da ordem exata deles.
+  const flatPoints = [];
+  pts.forEach((p) => flatPoints.push(Math.round(p.x), Math.round(p.y)));
+
+  const pointsMat = cv.matFromArray(pts.length, 1, cv.CV_32SC2, flatPoints);
+  const rect = cv.minAreaRect(pointsMat);
+  pointsMat.delete();
+
+  const angleRad = (rect.angle * Math.PI) / 180;
+  const cos = Math.cos(angleRad);
+  const sin = Math.sin(angleRad);
+  const halfW = rect.size.width / 2;
+  const halfH = rect.size.height / 2;
+  const cx = rect.center.x;
+  const cy = rect.center.y;
+
+  // Cantos relativos ao centro, antes da rotação: TL, TR, BR, BL
+  const relativeCorners = [
+    [-halfW, -halfH],
+    [halfW, -halfH],
+    [halfW, halfH],
+    [-halfW, halfH],
+  ];
+
+  return relativeCorners.map(([x, y]) => ({
+    x: cx + x * cos - y * sin,
+    y: cy + x * sin + y * cos,
+  }));
+}
+
 function runHomography(texImg) {
   // Redesenha a foto original antes de aplicar, para não empilhar aplicações antigas
   drawImageToCanvas(currentImage);
+
+  const quad = getBestFitQuad(points);
 
   const srcCorners = [
     0, 0,
@@ -205,7 +255,7 @@ function runHomography(texImg) {
     0, texImg.height,
   ];
   const dstCorners = [];
-  points.forEach((p) => dstCorners.push(p.x, p.y));
+  quad.forEach((p) => dstCorners.push(p.x, p.y));
 
   const texCanvas = document.createElement('canvas');
   texCanvas.width = texImg.width;
