@@ -66,6 +66,15 @@ colaboracao.md       → este arquivo
 
 > Toda sessão adiciona uma entrada nova no topo desta lista. Nunca apague entradas antigas.
 
+### 30/08/2026 — Corrige recorte por polígono livre + blend de luz/sombra (e recupera log de 4 commits não registrados)
+- **Catch-up de log:** entre a entrada anterior (29/08) e esta sessão, uma outra sessão fez 4 commits que não ficaram registrados aqui: `ea56819` (upload de foto), `0445a76` (marcação dos 4 cantos), `c07c8c2` (aplica textura via homografia, sem blend), `00c1ce7` (marcação vira polígono livre de N pontos). Ver mensagens de commit no histórico do git para detalhe de cada um.
+- Arquivos alterados nesta sessão: `frontend/app.js`
+- Commits desta sessão:
+  - `123def4` — fix: recorte da textura pelo polígono real marcado. O `00c1ce7` introduziu marcação de polígono livre, mas o recorte (`source-in` aplicado direto no canvas principal, já opaco) ignorava o polígono e só respeitava o bounding rect (`minAreaRect`) da textura — a marcação livre não tinha efeito visual nenhum. Corrigido fazendo o `destination-in` num canvas transparente separado antes de compor sobre a foto.
+  - `1b76aaa` — feat: blend de luz/sombra (soft-light com a luminância da foto original), próximo passo que já estava planejado.
+- Status: **concluído o que foi implementado, mas validado só estaticamente** (sintaxe via `node --check`, leitura cuidadosa da lógica de compositing/alpha). **Não testado em navegador real** — este ambiente não tem forma de rodar Canvas/OpenCV.js de verdade. Antes de considerar essas duas mudanças prontas para produção, alguém precisa abrir a página publicada, marcar um polígono não-retangular de propósito (ex: contornando um móvel) e confirmar visualmente que (a) a textura realmente respeita o contorno e não vaza pro bounding rect, e (b) o blend de luz/sombra está com intensidade razoável (o soft-light pode estar forte/fraco demais dependendo da foto — não há como calibrar isso sem ver o resultado real).
+- Notas para a próxima sessão: se o blend soft-light se mostrar forte/fraco demais no teste visual, considerar deixar a intensidade ajustável (ex: compor `shadedCanvas` com opacidade parcial sobre `warpedCanvas` em vez de soft-light puro a 100%). Depois da validação visual, os próximos passos continuam sendo os do plano original: mais itens reais no catálogo (hoje só tem 1, `brick-mescla-prime`), e a camada de IA generativa (LoRA via Colab + Hugging Face Spaces) — essa última ainda não tem `/training/` nem `/dataset/` criados.
+
 ### 29/08/2026 — Estrutura inicial do repositório e pipeline de deploy
 - Arquivos alterados: `colaboracao.md`, `README.md`, `frontend/index.html` (placeholder), `.github/workflows/deploy.yml`, `push-com-token.md`
 - Status: concluído (base do repositório e deploy funcionando)
