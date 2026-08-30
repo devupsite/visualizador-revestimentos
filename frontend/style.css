@@ -101,6 +101,12 @@ body {
   background: rgba(87, 153, 155, 0.12);
 }
 
+#mark-corner-btn.active {
+  background: #E8A33D;
+  border-color: #E8A33D;
+  color: #1a1a1a;
+}
+
 .catalog {
   margin-top: 1.5rem;
 }

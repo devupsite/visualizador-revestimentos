@@ -81,6 +81,7 @@ newPhotoBtn.addEventListener('click', () => {
 // real (os 4 cantos extremos do contorno) desses pontos — ver getBestFitQuad().
 const resetPointsBtn = document.getElementById('reset-points-btn');
 const finishPointsBtn = document.getElementById('finish-points-btn');
+const markCornerBtn = document.getElementById('mark-corner-btn');
 const instructions = document.getElementById('instructions');
 
 const MIN_POINTS = 4;
@@ -88,9 +89,22 @@ const MIN_POINTS = 4;
 let points = []; // [{x, y}, ...] em coordenadas do canvas
 let isFinalized = false;
 
+// Até 2 dos pontos marcados acima podem ser identificados como "quina": o
+// ponto onde a parede muda de ângulo/plano (o canto interno de um ambiente,
+// por exemplo). Uma única homografia só consegue representar UM plano; se a
+// área marcada cobre duas paredes com ângulos diferentes, aplicar uma textura
+// só via um quadrilátero produz uma perspectiva errada na parede que não foi
+// a base do cálculo (ver splitAtCorner() e runHomography()). armCornerMode
+// arma o próximo clique no canvas para ser registrado como quina, em vez de
+// um ponto comum do contorno.
+let cornerIndices = [];
+let armCornerMode = false;
+
 function resetPoints() {
   points = [];
   isFinalized = false;
+  cornerIndices = [];
+  armCornerMode = false;
   if (currentImage) {
     drawImageToCanvas(currentImage);
   }
@@ -114,17 +128,17 @@ function drawPoints() {
   if (!currentImage) return;
   drawImageToCanvas(currentImage);
 
-  ctx.fillStyle = '#57999B';
-  ctx.strokeStyle = '#57999B';
-  ctx.lineWidth = 2;
-
   points.forEach((p, i) => {
+    const isCorner = cornerIndices.includes(i);
+    ctx.fillStyle = isCorner ? '#E8A33D' : '#57999B';
     ctx.beginPath();
-    ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, isCorner ? 8 : 6, 0, Math.PI * 2);
     ctx.fill();
   });
 
   // Conecta os pontos já marcados, e fecha o polígono quando a marcação for finalizada
+  ctx.strokeStyle = '#57999B';
+  ctx.lineWidth = 2;
   if (points.length > 1) {
     ctx.beginPath();
     ctx.moveTo(points[0].x, points[0].y);
@@ -136,6 +150,20 @@ function drawPoints() {
     }
     ctx.stroke();
   }
+
+  // Destaca a linha da quina (entre os 2 pontos marcados como tal), se houver,
+  // pra deixar visualmente claro onde a área será dividida em 2 planos.
+  if (cornerIndices.length === 2) {
+    const [a, b] = cornerIndices;
+    ctx.strokeStyle = '#E8A33D';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(points[a].x, points[a].y);
+    ctx.lineTo(points[b].x, points[b].y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
 }
 
 function handleCanvasPoint(evt) {
@@ -143,6 +171,15 @@ function handleCanvasPoint(evt) {
   evt.preventDefault();
   const coords = getCanvasCoords(evt);
   points.push(coords);
+  if (armCornerMode) {
+    if (cornerIndices.length >= 2) {
+      // Já havia 2 quinas marcadas (não deveria chegar aqui, o botão some
+      // nesse caso) — substitui a mais antiga em vez de acumular indefinidamente.
+      cornerIndices.shift();
+    }
+    cornerIndices.push(points.length - 1);
+    armCornerMode = false;
+  }
   drawPoints();
   updateInstructions();
 }
@@ -151,6 +188,11 @@ canvas.addEventListener('click', handleCanvasPoint);
 canvas.addEventListener('touchstart', handleCanvasPoint);
 
 resetPointsBtn.addEventListener('click', resetPoints);
+markCornerBtn.addEventListener('click', () => {
+  if (isFinalized || cornerIndices.length >= 2) return;
+  armCornerMode = true;
+  updateInstructions();
+});
 finishPointsBtn.addEventListener('click', () => {
   if (points.length < MIN_POINTS) {
     instructions.textContent = `Marque pelo menos ${MIN_POINTS} pontos antes de concluir (${points.length}/${MIN_POINTS}).`;
@@ -171,13 +213,20 @@ let selectedTextureSrc = null;
 
 function updateInstructions() {
   if (!isFinalized) {
-    instructions.textContent = points.length === 0
-      ? 'Clique nos cantos da área que você quer revestir, contornando o formato exato. Quando terminar, clique em "Concluir marcação".'
-      : `${points.length} ponto(s) marcado(s). Continue contornando a área ou clique em "Concluir marcação" (mínimo ${MIN_POINTS}).`;
+    if (armCornerMode) {
+      instructions.textContent = 'Clique no ponto exato onde a parede muda de ângulo (a quina). Esse ponto vira parte do contorno normalmente.';
+    } else if (points.length === 0) {
+      instructions.textContent = 'Clique nos cantos da área que você quer revestir, contornando o formato exato. Quando terminar, clique em "Concluir marcação".';
+    } else {
+      instructions.textContent = `${points.length} ponto(s) marcado(s). Continue contornando a área ou clique em "Concluir marcação" (mínimo ${MIN_POINTS}). Se a área cobre uma quina (parede que muda de ângulo), use "Marcar quina da parede" antes de clicar no ponto da quina.`;
+    }
     catalogSection.classList.add('hidden');
+    markCornerBtn.classList.toggle('hidden', cornerIndices.length >= 2);
+    markCornerBtn.classList.toggle('active', armCornerMode);
   } else {
     instructions.textContent = 'Marcação concluída! Escolha um revestimento do catálogo abaixo.';
     catalogSection.classList.remove('hidden');
+    markCornerBtn.classList.add('hidden');
   }
 }
 
@@ -316,11 +365,30 @@ function buildLuminanceCanvas(image, width, height) {
   return grayCanvas;
 }
 
-function runHomography(texImg) {
-  // Redesenha a foto original antes de aplicar, para não empilhar aplicações antigas
-  drawImageToCanvas(currentImage);
+function splitAtCorner(pts, corners) {
+  // Divide o contorno marcado em 2 sub-polígonos usando os 2 pontos marcados
+  // como quina (corners = índices em pts). Cada sub-polígono representa uma
+  // parede/plano diferente e será processado com sua própria homografia —
+  // ver o porquê disso em runHomography().
+  //
+  // pts está em ordem de contorno (o visitante clicou nos pontos seguindo o
+  // perímetro da área). Os 2 pontos de quina dividem esse perímetro em 2
+  // arcos; cada arco + os 2 pontos de quina (que ambos os arcos compartilham,
+  // por serem os pontos de transição) formam o contorno fechado de uma parede.
+  const [a, b] = [...corners].sort((x, y) => x - y);
+  const arc1 = pts.slice(a, b + 1); // de a até b, incluindo os dois
+  const arc2 = pts.slice(b).concat(pts.slice(0, a + 1)); // de b até o fim + do início até a
+  return [arc1, arc2];
+}
 
-  const { corners: quad, width: quadWidth, height: quadHeight } = getBestFitQuad(points);
+function renderTextureForPolygon(poly, texImg) {
+  // Aplica a textura (ladrilhada + com perspectiva + blend de luz/sombra) a
+  // UM polígono/plano específico, e devolve um canvas transparente fora dele
+  // — pronto pra ser composto sobre o resultado acumulado em runHomography().
+  // Isso é o que antes era o corpo inteiro de runHomography(), extraído pra
+  // poder ser chamado 1x (parede única) ou 2x (parede com quina) sem duplicar
+  // a lógica de homografia/tiling/blend/recorte.
+  const { corners: quad, width: quadWidth, height: quadHeight } = getBestFitQuad(poly);
 
   // Repete a textura o suficiente para simular um padrão real de revestimento,
   // em vez de esticar 1 módulo pra cobrir a área toda.
@@ -363,7 +431,7 @@ function runHomography(texImg) {
   const warpedSize = new cv.Size(canvas.width, canvas.height);
   cv.warpPerspective(srcMat, dstMat, homography, warpedSize, cv.INTER_LINEAR, cv.BORDER_TRANSPARENT);
 
-  // Máscara: só desenha o resultado dentro do polígono marcado,
+  // Máscara: só desenha o resultado dentro do polígono marcado (deste plano),
   // preservando o resto da foto original intacto.
   const maskCanvas = document.createElement('canvas');
   maskCanvas.width = canvas.width;
@@ -371,8 +439,8 @@ function runHomography(texImg) {
   const maskCtx = maskCanvas.getContext('2d');
   maskCtx.fillStyle = '#fff';
   maskCtx.beginPath();
-  maskCtx.moveTo(points[0].x, points[0].y);
-  for (let i = 1; i < points.length; i++) maskCtx.lineTo(points[i].x, points[i].y);
+  maskCtx.moveTo(poly[0].x, poly[0].y);
+  for (let i = 1; i < poly.length; i++) maskCtx.lineTo(poly[i].x, poly[i].y);
   maskCtx.closePath();
   maskCtx.fill();
 
@@ -385,7 +453,7 @@ function runHomography(texImg) {
   // textura warpada, via soft-light, para herdar sombras/reflexos reais do
   // ambiente (em vez da textura ficar "colada" com iluminação plana).
   // Isso acontece ANTES do recorte pelo polígono — como o blend pode extrapolar
-  // a área do minAreaRect (mesmo problema de alpha do recorte, ver abaixo),
+  // a área do quadrilátero (mesmo problema de alpha do recorte, ver abaixo),
   // o destination-in com o polígono real, feito depois, corta qualquer sobra.
   const shadedCanvas = document.createElement('canvas');
   shadedCanvas.width = canvas.width;
@@ -403,7 +471,7 @@ function runHomography(texImg) {
   shadedCtx.globalAlpha = 1;
   shadedCtx.globalCompositeOperation = 'source-over';
 
-  // Recorta o resultado (já com o blend) pelo polígono EXATO marcado, não
+  // Recorta o resultado (já com o blend) pelo polígono EXATO deste plano, não
   // pelo bounding rect da textura. Isso precisa acontecer num canvas próprio,
   // transparente por padrão — se fizermos o destination-in direto no canvas
   // principal (que já está opaco com a foto), o recorte não tem efeito
@@ -417,14 +485,33 @@ function runHomography(texImg) {
   clippedCtx.globalCompositeOperation = 'destination-in';
   clippedCtx.drawImage(maskCanvas, 0, 0);
 
-  // Agora sim: foto original por baixo, textura já recortada pelo polígono por cima.
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(currentImage, 0, 0, canvas.width, canvas.height);
-  ctx.drawImage(clippedCanvas, 0, 0);
-
   srcMat.delete();
   dstMat.delete();
   srcTri.delete();
   dstTri.delete();
   homography.delete();
+
+  return clippedCanvas;
+}
+
+function runHomography(texImg) {
+  // Redesenha a foto original antes de aplicar, para não empilhar aplicações antigas
+  drawImageToCanvas(currentImage);
+
+  // Uma única homografia só representa UM plano (uma parede reta). Se a área
+  // marcada cobre uma quina (2 paredes com ângulos diferentes — visível na
+  // foto como uma dobra na linha do teto/rodapé), tratar a área toda como um
+  // quadrilátero só faz a perspectiva ficar certa numa parede e errada na
+  // outra. Quando o visitante marcou os 2 pontos de quina, dividimos o
+  // contorno em 2 sub-polígonos (um por parede) e aplicamos a textura em cada
+  // um separadamente, com sua própria homografia — ver splitAtCorner().
+  const polygons = cornerIndices.length === 2
+    ? splitAtCorner(points, cornerIndices)
+    : [points];
+
+  polygons.forEach((poly) => {
+    if (poly.length < 3) return; // contorno degenerado (não deveria acontecer) — ignora
+    const result = renderTextureForPolygon(poly, texImg);
+    ctx.drawImage(result, 0, 0);
+  });
 }
