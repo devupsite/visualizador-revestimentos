@@ -236,10 +236,37 @@ function getBestFitQuad(pts) {
     [-halfW, halfH],
   ];
 
-  return relativeCorners.map(([x, y]) => ({
+  const corners = relativeCorners.map(([x, y]) => ({
     x: cx + x * cos - y * sin,
     y: cy + x * sin + y * cos,
   }));
+
+  // Expõe também as dimensões do retângulo (em pixels do canvas), não só os
+  // cantos — necessário para calcular quantas vezes a textura precisa se
+  // repetir (ver buildTiledTextureCanvas) em vez de esticar uma imagem só.
+  return { corners, width: rect.size.width, height: rect.size.height };
+}
+
+function buildTiledTextureCanvas(texImg, repeatX, repeatY) {
+  // Uma textura de catálogo (ex: brick-mescla-prime.jpg) é o retrato de UMA
+  // unidade/módulo do revestimento, não da parede inteira. Esticar essa
+  // imagem única para preencher toda a área marcada faz cada tijolo/peça
+  // aparecer do tamanho da parede — desproporcional e sem repetição alguma
+  // (era exatamente o problema reportado: textura "reta", sem dimensionamento).
+  // Aqui repetimos a textura lado a lado repeatX × repeatY vezes ANTES da
+  // homografia, preservando a escala/proporção nativa da imagem do catálogo;
+  // o warpPerspective depois mapeia esse mosaico inteiro (não mais uma imagem
+  // só) para a área marcada.
+  const tiled = document.createElement('canvas');
+  tiled.width = texImg.width * repeatX;
+  tiled.height = texImg.height * repeatY;
+  const tiledCtx = tiled.getContext('2d');
+  for (let row = 0; row < repeatY; row++) {
+    for (let col = 0; col < repeatX; col++) {
+      tiledCtx.drawImage(texImg, col * texImg.width, row * texImg.height);
+    }
+  }
+  return tiled;
 }
 
 function buildLuminanceCanvas(image, width, height) {
@@ -259,23 +286,27 @@ function runHomography(texImg) {
   // Redesenha a foto original antes de aplicar, para não empilhar aplicações antigas
   drawImageToCanvas(currentImage);
 
-  const quad = getBestFitQuad(points);
+  const { corners: quad, width: quadWidth, height: quadHeight } = getBestFitQuad(points);
+
+  // Repete a textura o suficiente para que cada módulo dela mantenha,
+  // aproximadamente, a mesma escala em pixels que tem na imagem original do
+  // catálogo — em vez de esticar 1 módulo pra cobrir a área toda. Sem uma
+  // medida real da parede não dá pra cravar a escala fisicamente correta,
+  // mas isso evita o efeito de "textura gigante e achatada".
+  const repeatX = Math.max(1, Math.round(quadWidth / texImg.width));
+  const repeatY = Math.max(1, Math.round(quadHeight / texImg.height));
+  const tiledTexCanvas = buildTiledTextureCanvas(texImg, repeatX, repeatY);
 
   const srcCorners = [
     0, 0,
-    texImg.width, 0,
-    texImg.width, texImg.height,
-    0, texImg.height,
+    tiledTexCanvas.width, 0,
+    tiledTexCanvas.width, tiledTexCanvas.height,
+    0, tiledTexCanvas.height,
   ];
   const dstCorners = [];
   quad.forEach((p) => dstCorners.push(p.x, p.y));
 
-  const texCanvas = document.createElement('canvas');
-  texCanvas.width = texImg.width;
-  texCanvas.height = texImg.height;
-  texCanvas.getContext('2d').drawImage(texImg, 0, 0);
-
-  const srcMat = cv.imread(texCanvas);
+  const srcMat = cv.imread(tiledTexCanvas);
   const dstMat = new cv.Mat();
   const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, srcCorners);
   const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, dstCorners);
