@@ -345,9 +345,14 @@ function runHomography(texImg) {
   const shadedCtx = shadedCanvas.getContext('2d');
   shadedCtx.drawImage(warpedCanvas, 0, 0);
   shadedCtx.globalCompositeOperation = 'soft-light';
+  // Blend a 100% lava a textura quase até sumir em áreas muito claras da foto
+  // original (ex: quadros na parede, como visto em teste real) — reduzido pra
+  // dar a sensação de sombra/luz reais sem apagar o padrão da textura.
+  shadedCtx.globalAlpha = 0.45;
   shadedCtx.drawImage(buildLuminanceCanvas(currentImage, canvas.width, canvas.height), 0, 0);
-  // globalCompositeOperation persiste no canvas — reseta pro padrão antes de
-  // qualquer outro draw nesse contexto, senão o próximo drawImage também vira blend.
+  // globalAlpha/globalCompositeOperation persistem no canvas — reseta os dois
+  // antes de qualquer outro draw nesse contexto.
+  shadedCtx.globalAlpha = 1;
   shadedCtx.globalCompositeOperation = 'source-over';
 
   // Recorta o resultado (já com o blend) pelo polígono EXATO marcado, não
