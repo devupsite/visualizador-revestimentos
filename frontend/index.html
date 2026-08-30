@@ -27,9 +27,20 @@
         <button id="reset-points-btn" type="button">Refazer marcação</button>
         <button id="new-photo-btn" type="button">Trocar foto</button>
       </div>
+
+      <div id="catalog-section" class="catalog hidden">
+        <p class="instructions">Escolha um revestimento:</p>
+        <div class="catalog-grid">
+          <button class="catalog-item" data-texture="./assets/catalogo/brick-mescla-prime.jpg" type="button">
+            <img src="./assets/catalogo/brick-mescla-prime.jpg" alt="Brick Mescla Prime">
+            <span>Brick Mescla Prime</span>
+          </button>
+        </div>
+      </div>
     </section>
   </main>
 
+  <script async src="https://docs.opencv.org/4.9.0/opencv.js" onload="window.__cvReady = true"></script>
   <script src="./app.js"></script>
 </body>
 </html>

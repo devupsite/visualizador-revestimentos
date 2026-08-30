@@ -100,3 +100,38 @@ body {
 .actions button:hover {
   background: rgba(87, 153, 155, 0.12);
 }
+
+.catalog {
+  margin-top: 1.5rem;
+}
+
+.catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 0.75rem;
+}
+
+.catalog-item {
+  background: var(--panel-bg);
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 0.5rem;
+  cursor: pointer;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.catalog-item:hover,
+.catalog-item.selected {
+  border-color: var(--accent);
+}
+
+.catalog-item img {
+  width: 100%;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 6px;
+  margin-bottom: 0.4rem;
+}

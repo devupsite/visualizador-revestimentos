@@ -93,14 +93,6 @@ function resetPoints() {
   updateInstructions();
 }
 
-function updateInstructions() {
-  if (points.length < 4) {
-    instructions.textContent = `Marque o canto ${POINT_LABELS[points.length]} da parede ou piso (${points.length}/4).`;
-  } else {
-    instructions.textContent = 'Marcação concluída! Escolha um revestimento do catálogo para aplicar.';
-  }
-}
-
 function getCanvasCoords(evt) {
   const rect = canvas.getBoundingClientRect();
   // Corrige a diferença entre o tamanho real do canvas e o tamanho exibido em tela
@@ -155,3 +147,117 @@ canvas.addEventListener('click', handleCanvasPoint);
 canvas.addEventListener('touchstart', handleCanvasPoint);
 
 resetPointsBtn.addEventListener('click', resetPoints);
+
+// --- Aplicação da textura via homografia (OpenCV.js) ---
+// Etapa atual: mapeia a textura escolhida para o quadrilátero marcado,
+// respeitando a perspectiva. Ainda SEM blend de luz/sombra (próximo commit) —
+// por enquanto a textura fica "colada" por cima, sem herdar iluminação da foto original.
+
+const catalogSection = document.getElementById('catalog-section');
+let selectedTextureSrc = null;
+
+function updateInstructions() {
+  if (points.length < 4) {
+    instructions.textContent = `Marque o canto ${POINT_LABELS[points.length]} da parede ou piso (${points.length}/4).`;
+    catalogSection.classList.add('hidden');
+  } else {
+    instructions.textContent = 'Marcação concluída! Escolha um revestimento do catálogo abaixo.';
+    catalogSection.classList.remove('hidden');
+  }
+}
+
+document.querySelectorAll('.catalog-item').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.catalog-item').forEach((b) => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    selectedTextureSrc = btn.dataset.texture;
+    applyTexture(selectedTextureSrc);
+  });
+});
+
+function waitForOpenCV(callback) {
+  if (window.cv && window.cv.Mat) {
+    callback();
+  } else {
+    setTimeout(() => waitForOpenCV(callback), 100);
+  }
+}
+
+function applyTexture(textureSrc) {
+  if (points.length !== 4 || !currentImage) return;
+
+  const texImg = new Image();
+  texImg.crossOrigin = 'anonymous';
+  texImg.onload = () => {
+    waitForOpenCV(() => runHomography(texImg));
+  };
+  texImg.src = textureSrc;
+}
+
+function runHomography(texImg) {
+  // Redesenha a foto original antes de aplicar, para não empilhar aplicações antigas
+  drawImageToCanvas(currentImage);
+
+  const srcCorners = [
+    0, 0,
+    texImg.width, 0,
+    texImg.width, texImg.height,
+    0, texImg.height,
+  ];
+  const dstCorners = [];
+  points.forEach((p) => dstCorners.push(p.x, p.y));
+
+  const texCanvas = document.createElement('canvas');
+  texCanvas.width = texImg.width;
+  texCanvas.height = texImg.height;
+  texCanvas.getContext('2d').drawImage(texImg, 0, 0);
+
+  const srcMat = cv.imread(texCanvas);
+  const dstMat = new cv.Mat();
+  const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, srcCorners);
+  const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, dstCorners);
+  const homography = cv.findHomography(srcTri, dstTri);
+
+  const warpedSize = new cv.Size(canvas.width, canvas.height);
+  cv.warpPerspective(srcMat, dstMat, homography, warpedSize, cv.INTER_LINEAR, cv.BORDER_TRANSPARENT);
+
+  // Máscara: só desenha o resultado dentro do polígono marcado,
+  // preservando o resto da foto original intacto.
+  const maskCanvas = document.createElement('canvas');
+  maskCanvas.width = canvas.width;
+  maskCanvas.height = canvas.height;
+  const maskCtx = maskCanvas.getContext('2d');
+  maskCtx.fillStyle = '#fff';
+  maskCtx.beginPath();
+  maskCtx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i++) maskCtx.lineTo(points[i].x, points[i].y);
+  maskCtx.closePath();
+  maskCtx.fill();
+
+  const warpedCanvas = document.createElement('canvas');
+  warpedCanvas.width = canvas.width;
+  warpedCanvas.height = canvas.height;
+  cv.imshow(warpedCanvas, dstMat);
+
+  ctx.save();
+  ctx.drawImage(maskCanvas, 0, 0);
+  ctx.globalCompositeOperation = 'source-in';
+  ctx.drawImage(warpedCanvas, 0, 0);
+  ctx.restore();
+
+  // Redesenha o resto da foto original por baixo do resultado mascarado
+  const finalCanvas = document.createElement('canvas');
+  finalCanvas.width = canvas.width;
+  finalCanvas.height = canvas.height;
+  const finalCtx = finalCanvas.getContext('2d');
+  finalCtx.drawImage(currentImage, 0, 0, finalCanvas.width, finalCanvas.height);
+  finalCtx.drawImage(canvas, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(finalCanvas, 0, 0);
+
+  srcMat.delete();
+  dstMat.delete();
+  srcTri.delete();
+  dstTri.delete();
+  homography.delete();
+}
