@@ -16,16 +16,15 @@ colaboracao.md → guia de colaboração entre sessões
 
 ## Deploy
 
-Todo push na branch `main` dispara o workflow `.github/workflows/deploy.yml`, que envia o conteúdo de `/frontend/` para a Hostinger via FTP.
+**Método atual: GitHub Pages.** Todo push na branch `main` dispara o workflow `.github/workflows/deploy.yml`, que publica o conteúdo de `/frontend/` diretamente no GitHub Pages — sem precisar de FTP nem secrets.
 
-**Configuração necessária (uma vez só, feita direto no GitHub, nunca compartilhada em chat):**
+**Configuração necessária (uma vez só, direto na interface do GitHub):**
 
-Em Settings → Secrets and variables → Actions, cadastrar:
-- `FTP_SERVER` — endereço do servidor FTP da Hostinger
-- `FTP_USERNAME` — usuário FTP
-- `FTP_PASSWORD` — senha FTP
+Em Settings → Pages → Build and deployment → Source, selecionar **"GitHub Actions"** (não "Deploy from a branch").
 
-O caminho remoto (`server-dir`) está configurado como `/visualizador/` no workflow — ajustar se a estrutura real do servidor for diferente.
+Depois disso, cada push na `main` gera uma URL pública automaticamente (algo como `https://devupsite.github.io/visualizador-revestimentos/`).
+
+> Quando for hora de apontar um domínio próprio ou migrar para a Hostinger via FTP, existe um workflow alternativo já testado anteriormente (ver histórico do repositório) — é só trocar o `deploy.yml` de volta e cadastrar as secrets de FTP.
 
 ## Status atual
 
