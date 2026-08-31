@@ -216,7 +216,7 @@ function updateInstructions() {
     if (armCornerMode) {
       instructions.textContent = 'Clique no ponto exato onde a parede muda de ângulo (a quina). Esse ponto vira parte do contorno normalmente.';
     } else if (points.length === 0) {
-      instructions.textContent = 'Clique nos cantos da área que você quer revestir, contornando o formato exato. Quando terminar, clique em "Concluir marcação".';
+      instructions.textContent = 'Clique nos cantos da área que você quer revestir, contornando o formato exato. Perto de móveis ou objetos, use pontos mais próximos entre si para um recorte mais preciso. Quando terminar, clique em "Concluir marcação".';
     } else {
       instructions.textContent = `${points.length} ponto(s) marcado(s). Continue contornando a área ou clique em "Concluir marcação" (mínimo ${MIN_POINTS}). Se a área cobre uma quina (parede que muda de ângulo), use "Marcar quina da parede" antes de clicar no ponto da quina.`;
     }
@@ -340,13 +340,49 @@ function buildTiledTextureCanvas(texImg, repeatX, repeatY) {
   // homografia, preservando a escala/proporção nativa da imagem do catálogo;
   // o warpPerspective depois mapeia esse mosaico inteiro (não mais uma imagem
   // só) para a área marcada.
+  //
+  // Duas melhorias em cima do tiling "cru" (grade perfeita, todo módulo
+  // idêntico), que testado visualmente ficou com cara de papel de parede
+  // digital em vez de revestimento real assentado:
+  // 1. Running bond: linhas alternadas deslocadas em meio módulo, como
+  //    tijolo/brick real é assentado (nunca é uma grade quadriculada perfeita).
+  // 2. Variação pseudo-aleatória (mas determinística, sem Math.random — o
+  //    mesmo ladrilhamento deve sair igual se o usuário reaplicar a mesma
+  //    textura): alguns módulos são espelhados horizontalmente, quebrando a
+  //    repetição óbvia do mesmo padrão de veios/manchas em cada peça.
+  const tileW = texImg.width;
+  const tileH = texImg.height;
+  const halfW = tileW / 2;
+
   const tiled = document.createElement('canvas');
-  tiled.width = texImg.width * repeatX;
-  tiled.height = texImg.height * repeatY;
+  tiled.width = tileW * repeatX;
+  tiled.height = tileH * repeatY;
   const tiledCtx = tiled.getContext('2d');
+
   for (let row = 0; row < repeatY; row++) {
-    for (let col = 0; col < repeatX; col++) {
-      tiledCtx.drawImage(texImg, col * texImg.width, row * texImg.height);
+    // Linhas ímpares deslocam meio módulo pra esquerda — o canvas não muda de
+    // tamanho, então desenhamos 1 coluna extra de cada lado (-1 e repeatX);
+    // o que cair fora dos limites do canvas é automaticamente cortado pelo
+    // próprio <canvas>, sem precisar checar limites manualmente.
+    const rowOffset = row % 2 === 1 ? -halfW : 0;
+
+    for (let col = -1; col <= repeatX; col++) {
+      const x = col * tileW + rowOffset;
+      const y = row * tileH;
+      // Padrão determinístico de espelhamento — não é aleatório de verdade,
+      // é só uma combinação de row/col que "parece" espalhada o suficiente
+      // pra quebrar a repetição visual sem precisar de estado/seed.
+      const shouldMirror = (row * 7 + col * 13) % 5 === 0;
+
+      tiledCtx.save();
+      if (shouldMirror) {
+        tiledCtx.translate(x + tileW, y);
+        tiledCtx.scale(-1, 1);
+        tiledCtx.drawImage(texImg, 0, 0);
+      } else {
+        tiledCtx.drawImage(texImg, x, y);
+      }
+      tiledCtx.restore();
     }
   }
   return tiled;
@@ -465,6 +501,14 @@ function renderTextureForPolygon(poly, texImg) {
   // original (ex: quadros na parede, como visto em teste real) — reduzido pra
   // dar a sensação de sombra/luz reais sem apagar o padrão da textura.
   shadedCtx.globalAlpha = 0.45;
+  shadedCtx.drawImage(buildLuminanceCanvas(currentImage, canvas.width, canvas.height), 0, 0);
+  // Segunda passada, em 'multiply': o soft-light sozinho ficou "flat" em teste
+  // visual real (textura parecia com brilho/saturação deslocados do resto da
+  // foto, principalmente em cantos e sombras mais fortes). Multiply só
+  // escurece (nunca clareia), então reforça sombra de canto/objeto sem lavar
+  // a textura em áreas claras como o soft-light isolado fazia.
+  shadedCtx.globalCompositeOperation = 'multiply';
+  shadedCtx.globalAlpha = 0.2;
   shadedCtx.drawImage(buildLuminanceCanvas(currentImage, canvas.width, canvas.height), 0, 0);
   // globalAlpha/globalCompositeOperation persistem no canvas — reseta os dois
   // antes de qualquer outro draw nesse contexto.
