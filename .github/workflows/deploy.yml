@@ -1,37 +1,31 @@
-name: Deploy para GitHub Pages
+name: Deploy para Hostinger
 
+# Dispara sempre que a branch main receber um push
 on:
   push:
     branches:
       - main
 
-# Permissões necessárias para publicar no GitHub Pages
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-# Evita deploys simultâneos brigando pelo mesmo ambiente
-concurrency:
-  group: pages
-  cancel-in-progress: true
-
 jobs:
   deploy:
+    name: Sync frontend/ via FTP
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
       - name: Checkout do repositório
         uses: actions/checkout@v4
 
-      - name: Preparar arquivos para o Pages
-        uses: actions/upload-pages-artifact@v3
+      - name: Deploy via FTP para a Hostinger
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          # Pasta que contém o site pronto (frontend/, não a raiz do repo)
-          path: ./frontend
-
-      - name: Publicar no GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          # Pasta local que será enviada (o site em si)
+          local-dir: ./frontend/
+          # Pasta remota na Hostinger onde o visualizador deve morar.
+          # Ajustar conforme a estrutura real do servidor (ex: subpasta ou subdomínio).
+          server-dir: /visualizador/
+          # Não apaga arquivos no servidor que não existem localmente,
+          # evita acidente de apagar algo que outra pessoa subiu manualmente.
+          dangerous-clean-slate: false
