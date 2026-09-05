@@ -64,6 +64,25 @@ colaboracao.md       → este arquivo
 
 ## Log de sessões
 
+### 04/09/2026 — Decisão: pivotar para IA generativa (Gemini) e voltar a hospedar tudo na Hostinger
+- Contexto: a abordagem geométrica (homografia + blend) resolve fidelidade ao produto do catálogo, mas está travada em validação visual real desde a sessão anterior (esta sessão não tem como rodar Canvas/OpenCV.js). O usuário testou manualmente o mesmo ambiente em duas plataformas de edição de imagem por IA generativa:
+  - **GPT (gpt-image)**: resolveu perspectiva de quina e iluminação muito bem, mas **não reproduziu o produto real** — generalizou o "Brick Mescla Prime" (tijolo mesclado cinza/terracota) para um tijolo terracota liso genérico.
+  - **Nano Banana 2 (Gemini)**: fidelidade de cor/mescla do produto muito mais próxima do catálogo real, quina também resolvida bem. Porém **alucinou elementos que não existem na foto original** (abajur aceso, fita de LED no rodapé) — risco sério para um visualizador de vendas, onde o cliente precisa ver o próprio ambiente real, não um ambiente reinventado.
+- Decisão tomada: adotar geração via IA (Gemini) em vez da homografia geométrica, mas **restringindo a edição a uma máscara** (a área já marcada manualmente pelo usuário na UI existente) para evitar que o modelo altere qualquer coisa fora da parede indicada — ataca diretamente o problema de alucinação observado no teste do Nano Banana 2.
+- Decisão de infraestrutura: **manter tudo na Hostinger** (não usar Cloudflare Worker). Descoberto que o projeto `devupsite/bruto` já tem um padrão testado em produção para guardar segredo de API em PHP: `api/chat.php` é uma ponte pública sem segredo nenhum, que faz `require` de um arquivo fora do `public_html` (`bruto-secrets/API/chat.php`, nunca tocado pelo deploy do Git). Esse padrão foi replicado aqui.
+- Arquivos alterados nesta sessão:
+  - `.github/workflows/deploy.yml` — revertido de GitHub Pages para o pipeline FTP/Hostinger original (idêntico ao commit `22f2781`, anterior à migração `89c76b0`). **Os secrets `FTP_SERVER`/`FTP_USERNAME`/`FTP_PASSWORD` foram apagados na migração anterior e precisam ser recadastrados manualmente em Settings → Secrets and variables → Actions antes do próximo push funcionar.**
+  - `api/gerar-preview.php` (novo) — ponte pública no mesmo padrão do Bruto.
+- EM ANDAMENTO / itens em aberto para a próxima sessão:
+  - **Recriar os secrets de FTP no repositório** (apagados, `total_count: 0` confirmado via API nesta sessão).
+  - **Criar `visualizador-secrets/API/gerar-preview.php` diretamente no servidor Hostinger** (fora do `public_html`, via FTP/File Manager) — contém a chave real da API do Gemini e a lógica de chamada. Não deve ser commitado no Git em hipótese nenhuma. Ainda não escrito.
+  - Testar se o pipeline FTP volta a publicar corretamente depois de recadastrar os secrets.
+  - Implementar no `frontend/app.js`: conversão do contorno marcado (pontos já capturados) em uma máscara PNG via canvas, e um botão "Gerar prévia com IA" que chama `fetch('/api/gerar-preview.php', ...)` com `FormData` (foto do ambiente, máscara, imagem do revestimento escolhido).
+  - Prompt a usar na chamada real (validado manualmente pelo usuário via testes fora do código): pedir para respeitar fielmente o padrão/cor do material de referência, aplicar em cada plano de parede com sua própria perspectiva, e não alterar nada fora da máscara (luz, sombra, objetos).
+  - Definir limite de gerações por sessão/visitante (custo de ~US$0,039 por imagem gerada, Gemini 2.5/3 Flash Image) para evitar abuso, já que o site é público.
+  - Decidir se a homografia geométrica atual é mantida como fallback/prévia instantânea gratuita, ou descontinuada em favor só da geração por IA.
+
+
 > Toda sessão adiciona uma entrada nova no topo desta lista. Nunca apague entradas antigas.
 
 ### 30/08/2026 (continuação 4) — Suporte a quina de parede (2 planos com homografias separadas)
