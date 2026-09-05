@@ -108,6 +108,10 @@ function resetPoints() {
   if (currentImage) {
     drawImageToCanvas(currentImage);
   }
+  selectedTextureSrc = null;
+  aiPreviewBtn.disabled = true;
+  aiPreviewResult.classList.add('hidden');
+  aiPreviewStatus.classList.add('hidden');
   updateInstructions();
 }
 
@@ -211,6 +215,18 @@ finishPointsBtn.addEventListener('click', () => {
 const catalogSection = document.getElementById('catalog-section');
 let selectedTextureSrc = null;
 
+// --- Prévia com IA generativa (Gemini), restrita à máscara marcada ---
+// Decisão registrada em colaboracao.md (04/09/2026): a homografia geométrica
+// garante fidelidade ao produto do catálogo mas não chega perto do realismo
+// de luz/perspectiva que um modelo generativo entrega. A saída escolhida foi
+// enviar a MÁSCARA da área já marcada pelo visitante (mesmo contorno usado na
+// homografia) junto com a foto e a textura, restringindo o modelo a editar
+// só ali — ataca o problema de alucinação (objetos/luz inventados fora da
+// área) observado nos testes manuais que motivaram essa decisão.
+const aiPreviewBtn = document.getElementById('ai-preview-btn');
+const aiPreviewStatus = document.getElementById('ai-preview-status');
+const aiPreviewResult = document.getElementById('ai-preview-result');
+
 function updateInstructions() {
   if (!isFinalized) {
     if (armCornerMode) {
@@ -236,6 +252,9 @@ document.querySelectorAll('.catalog-item').forEach((btn) => {
     btn.classList.add('selected');
     selectedTextureSrc = btn.dataset.texture;
     applyTexture(selectedTextureSrc);
+    aiPreviewBtn.disabled = false;
+    aiPreviewResult.classList.add('hidden');
+    aiPreviewStatus.classList.add('hidden');
   });
 });
 
@@ -559,3 +578,98 @@ function runHomography(texImg) {
     ctx.drawImage(result, 0, 0);
   });
 }
+
+
+// --- Geração da prévia via IA (backend PHP -> Gemini) ---
+
+function buildOriginalPhotoCanvas() {
+  // A foto original, sem nenhuma textura desenhada por cima — independente
+  // do que estiver visível no canvas principal no momento (que pode já ter
+  // a homografia geométrica aplicada). Mesma escala de drawImageToCanvas(),
+  // então usa o mesmo sistema de coordenadas de `points`.
+  const original = document.createElement('canvas');
+  original.width = canvas.width;
+  original.height = canvas.height;
+  original.getContext('2d').drawImage(currentImage, 0, 0, original.width, original.height);
+  return original;
+}
+
+function buildMaskCanvasForIA(poly) {
+  // Máscara preto-e-branco (não transparente, como a usada na homografia):
+  // branco = área editável pela IA, preto = preservar exatamente como está.
+  const mask = document.createElement('canvas');
+  mask.width = canvas.width;
+  mask.height = canvas.height;
+  const maskCtx = mask.getContext('2d');
+  maskCtx.fillStyle = '#000';
+  maskCtx.fillRect(0, 0, mask.width, mask.height);
+  maskCtx.fillStyle = '#fff';
+  maskCtx.beginPath();
+  maskCtx.moveTo(poly[0].x, poly[0].y);
+  for (let i = 1; i < poly.length; i++) maskCtx.lineTo(poly[i].x, poly[i].y);
+  maskCtx.closePath();
+  maskCtx.fill();
+  return mask;
+}
+
+function canvasToBlob(canvasEl, type = 'image/png') {
+  return new Promise((resolve) => canvasEl.toBlob(resolve, type));
+}
+
+async function textureUrlToBlob(url) {
+  const resposta = await fetch(url);
+  return resposta.blob();
+}
+
+async function gerarPreviewIA() {
+  if (!isFinalized || !currentImage || !selectedTextureSrc) return;
+
+  aiPreviewBtn.disabled = true;
+  aiPreviewStatus.classList.remove('hidden');
+  aiPreviewStatus.textContent = 'Gerando prévia com IA... isso pode levar alguns segundos.';
+  aiPreviewResult.classList.add('hidden');
+
+  try {
+    const ambienteCanvas = buildOriginalPhotoCanvas();
+    const maskCanvas = buildMaskCanvasForIA(points);
+
+    const [ambienteBlob, maskBlob, texturaBlob] = await Promise.all([
+      canvasToBlob(ambienteCanvas),
+      canvasToBlob(maskCanvas),
+      textureUrlToBlob(selectedTextureSrc),
+    ]);
+
+    const formData = new FormData();
+    formData.append('ambiente', ambienteBlob, 'ambiente.png');
+    formData.append('mascara', maskBlob, 'mascara.png');
+    formData.append('textura', texturaBlob, 'textura.jpg');
+
+    const resposta = await fetch('/api/gerar-preview.php', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!resposta.ok) {
+      const erro = await resposta.json().catch(() => ({}));
+      throw new Error(erro.erro || `Erro ${resposta.status} ao gerar prévia.`);
+    }
+
+    const dados = await resposta.json();
+    // Resposta bruta da API do Gemini: extrai a imagem gerada (inline_data em base64).
+    const partes = dados?.candidates?.[0]?.content?.parts || [];
+    const partImagem = partes.find((p) => p.inlineData || p.inline_data);
+    const inlineData = partImagem?.inlineData || partImagem?.inline_data;
+    if (!inlineData) throw new Error('A resposta não trouxe uma imagem gerada.');
+
+    const mime = inlineData.mimeType || inlineData.mime_type;
+    aiPreviewResult.src = `data:${mime};base64,${inlineData.data}`;
+    aiPreviewResult.classList.remove('hidden');
+    aiPreviewStatus.classList.add('hidden');
+  } catch (err) {
+    aiPreviewStatus.textContent = `Não foi possível gerar a prévia: ${err.message}`;
+  } finally {
+    aiPreviewBtn.disabled = false;
+  }
+}
+
+aiPreviewBtn.addEventListener('click', gerarPreviewIA);
