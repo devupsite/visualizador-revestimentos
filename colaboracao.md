@@ -64,6 +64,26 @@ colaboracao.md       → este arquivo
 
 ## Log de sessões
 
+### 04/09/2026 (continuação) — Migração para Hostinger concluída + frontend da prévia por IA
+- Contexto: sessão anterior decidiu adotar IA generativa via máscara e manter tudo na Hostinger. Esta continuação executa a migração de infraestrutura e o frontend.
+- Infraestrutura:
+  - Conta FTP dedicada criada na Hostinger, isolada em `.../public_html/visualizador` (usuário `u764636502.rafael`), em vez de reaproveitar a conta principal do domínio (`brutoceramica.com.br`) — princípio de menor privilégio, mesmo raciocínio do `bruto-secrets/`.
+  - Secrets `FTP_SERVER`, `FTP_USERNAME`, `FTP_PASSWORD` recadastrados no repositório via API (os anteriores tinham sido apagados na migração para Pages).
+  - `deploy.yml` ajustado: `server-dir` de `/visualizador/` para `/` (a conta FTP dedicada já nasce presa dentro da subpasta certa).
+  - **Deploy confirmado funcionando**: workflow run com `conclusion: success`, site publicado e verificado pelo usuário em `brutoceramica.com.br/visualizador/`. O link antigo do GitHub Pages não recebe mais atualizações.
+- Arquivos alterados:
+  - `frontend/index.html` — nova seção `.ai-preview` com botão "Gerar prévia com IA", área de status e `<img>` de resultado, dentro de `#catalog-section`.
+  - `frontend/app.js` — `buildOriginalPhotoCanvas()` (foto original sem textura desenhada, mesma escala de `points`), `buildMaskCanvasForIA()` (máscara preto-e-branco reaproveitando o mesmo contorno `points` já usado na homografia — branco = editável, preto = preservar), `gerarPreviewIA()` (monta `FormData` com ambiente + máscara + textura do catálogo, chama `fetch('/api/gerar-preview.php')`, extrai a imagem `inline_data`/`inlineData` da resposta bruta do Gemini e exibe). Botão habilita ao escolher um revestimento; estado reseta em `resetPoints()`.
+  - `api/gerar-preview.php` (sessão anterior) — ponte pública sem segredo, `require` de `visualizador-secrets/API/gerar-preview.php` fora do `public_html`.
+- Status: **frontend e ponte pública prontos e commitados, mas o pipeline de geração ainda NÃO funciona de ponta a ponta** — falta a peça final.
+- EM ANDAMENTO / pendente para a próxima sessão:
+  - **Criar `visualizador-secrets/API/gerar-preview.php` no servidor Hostinger** (fora do `public_html`, via FTP/File Manager) — só existe um rascunho de referência (não commitado, entregue ao usuário fora do Git) com: leitura dos 3 arquivos (`ambiente`, `mascara`, `textura`) via `$_FILES`, prompt restritivo por máscara (validado manualmente pelo usuário em teste fora do código, ver entrada anterior do log), chamada à API do Gemini (`generateContent`, modelo a confirmar — usar o Nano Banana Pro vigente), limite simples de gerações por IP/dia via arquivo local em `sys_get_temp_dir()`.
+  - **Confirmar o nome exato do modelo Gemini vigente** (`gemini-3-pro-image-preview` no rascunho é um placeholder — sujeito a mudança de nomenclatura da API do Google) e obter uma `GEMINI_API_KEY` real no Google AI Studio.
+  - Nenhum teste end-to-end foi feito ainda (nem estático nem visual) — o `fetch` do `app.js` para `/api/gerar-preview.php` vai falhar até o arquivo real existir no servidor.
+  - Depois de funcionar, validar visualmente com uma foto real (idealmente repetindo o mesmo teste de quina já usado antes) e reavaliar se o limite de 5 gerações/dia por IP é adequado.
+  - Decisão ainda em aberto: manter a homografia geométrica como prévia instantânea/gratuita ao lado da prévia por IA, ou descontinuá-la.
+
+
 ### 04/09/2026 — Decisão: pivotar para IA generativa (Gemini) e voltar a hospedar tudo na Hostinger
 - Contexto: a abordagem geométrica (homografia + blend) resolve fidelidade ao produto do catálogo, mas está travada em validação visual real desde a sessão anterior (esta sessão não tem como rodar Canvas/OpenCV.js). O usuário testou manualmente o mesmo ambiente em duas plataformas de edição de imagem por IA generativa:
   - **GPT (gpt-image)**: resolveu perspectiva de quina e iluminação muito bem, mas **não reproduziu o produto real** — generalizou o "Brick Mescla Prime" (tijolo mesclado cinza/terracota) para um tijolo terracota liso genérico.
