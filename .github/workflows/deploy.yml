@@ -25,7 +25,7 @@ jobs:
           local-dir: ./frontend/
           # Pasta remota na Hostinger onde o visualizador deve morar.
           # Ajustar conforme a estrutura real do servidor (ex: subpasta ou subdomínio).
-          server-dir: /visualizador/
+          server-dir: /
           # Não apaga arquivos no servidor que não existem localmente,
           # evita acidente de apagar algo que outra pessoa subiu manualmente.
           dangerous-clean-slate: false
